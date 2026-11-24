@@ -90,6 +90,7 @@ public partial class MainPage : ContentPage
         _pageHost = new VerticalStackLayout { Spacing = 10, Padding = new Thickness(12, 12, 12, 24) };
         var contentScroll = new ScrollView { Content = _pageHost };
         Root.Add(contentScroll, 0, 2);
+        _ = RefreshViewAsync();
     }
 
     protected override async void OnAppearing()
@@ -475,7 +476,7 @@ public partial class MainPage : ContentPage
                 Content = row
             });
         }
-        _pageHost.Add(MakeButton("Обновить отмеченные расписания", Color.FromArgb("#E9EEF6"), _brand, RefreshSchedulesAsync, 44));
+        _pageHost.Add(MakeButton("Обновить отмеченные расписания", Color.FromArgb("#E9EEF6"), _brand, () => RefreshSchedulesAsync(), 44));
     }
 
     private async Task BuildLessonsViewAsync()
