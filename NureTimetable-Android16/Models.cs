@@ -69,7 +69,7 @@ public sealed class UserSettings
     public bool AutoUpdate { get; set; } = true;
     public DateTime LastForegroundSync { get; set; } = DateTime.MinValue;
     public bool ShowPastLessons { get; set; } = true;
-    public int ReminderMinutes { get; set; } = 0;
+    public int ReminderMinutes { get; set; } = -1;
     public string MoodleLogin { get; set; } = "";
     public string MoodleFullName { get; set; } = "";
     public int MoodleUserId { get; set; }
