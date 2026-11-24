@@ -49,6 +49,8 @@ public sealed class TimetableSyncJobService : JobService
             }
 
             settings.LastForegroundSync = DateTime.Now;
+            var allEvents = await store.LoadSelectedEventsAsync(entities);
+            AndroidReminderScheduler.Schedule(allEvents, settings.ReminderMinutes, settings.TimeZoneId);
             await store.SaveEntitiesAsync(entities);
             await store.SaveSettingsAsync(settings);
         }
