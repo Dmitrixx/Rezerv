@@ -567,7 +567,7 @@ public partial class MainPage : ContentPage
             await SaveSettingsAsync();
         });
         _pageHost.Add(MakeButton("Войти в дистанционное обучение ХНУРЭ", Color.FromArgb("#E9EEF6"), _brand,
-            async () => await Browser.Default.OpenAsync("https://dl.nure.ua/login/index.php"), 46));
+            async () => await Navigation.PushAsync(new MoodleIntegrationPage(_store)), 46));
         _pageHost.Add(MakeButton("Открыть официальный сайт расписания", Color.FromArgb("#E9EEF6"), _brand,
             async () => await Browser.Default.OpenAsync("https://cist.nure.ua/ias/app/tt/f?p=778:2"), 46));
         _pageHost.Add(MakeButton("Экспорт расписания в файл календаря", _brand, Colors.White, ExportCalendarAsync, 46));
