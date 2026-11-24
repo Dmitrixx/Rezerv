@@ -313,8 +313,11 @@ public sealed class CistService
                 foreach (var ev in events)
                 {
                     string key = ev.Lesson.Trim().ToUpperInvariant() + "|" + ev.Type.Trim().ToUpperInvariant();
-                    if (teacherMap.TryGetValue(key, out var names))
-                        ev.Teachers = names.Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
+                    if (teacherMap.TryGetValue(key, out var lessonMetadata))
+                    {
+                        ev.Teachers = lessonMetadata.Teachers.Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
+                        ev.LessonLongName = lessonMetadata.LongName;
+                    }
                     ev.Groups = new() { entity.Name };
                 }
             }
@@ -327,7 +330,13 @@ public sealed class CistService
         return events.OrderBy(e => e.Start).ToList();
     }
 
-    private async Task<Dictionary<string, List<string>>> LoadGroupTeacherMetadataAsync(TimetableEntity group, DateTime from, DateTime to, CancellationToken ct)
+    private sealed class LessonMetadata
+    {
+        public string LongName { get; set; } = "";
+        public List<string> Teachers { get; set; } = new();
+    }
+
+    private async Task<Dictionary<string, LessonMetadata>> LoadGroupTeacherMetadataAsync(TimetableEntity group, DateTime from, DateTime to, CancellationToken ct)
     {
         string url = BaseUrl + "WEB_IAS_TT_GNR_RASP.GEN_GROUP_POTOK_RASP" +
             $"?ATypeDoc=2&Aid_group={group.Id}&Aid_potok=0&ADateStart={DateTime.Today:dd.MM.yyyy}&ADateEnd={to:dd.MM.yyyy}&AMultiWorkSheet=0";
@@ -335,28 +344,29 @@ public sealed class CistService
         var cells = Regex.Matches(xml, @"ss:Type=""String"">\s*(.*?)</Data>", RegexOptions.Singleline | RegexOptions.IgnoreCase)
             .Select(m => CleanHtml(m.Groups[1].Value))
             .ToList();
-        var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, LessonMetadata>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i + 1 < cells.Count; i += 2)
         {
             string shortName = cells[i].Trim();
             string[] parts = cells[i + 1].Split(new[] { ": ", "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) continue;
+            string longName = parts[0].Trim();
             foreach (string line in parts.Skip(1))
             {
                 var tokens = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-                if (tokens.Count <= 4) continue;
+                if (tokens.Count == 0) continue;
+                string eventType = tokens[0];
+                string key = shortName.ToUpperInvariant() + "|" + eventType.ToUpperInvariant();
+                if (!map.TryGetValue(key, out var metadata))
+                    map[key] = metadata = new LessonMetadata { LongName = longName };
                 while (tokens.Count > 4 && !tokens[3].EndsWith(",", StringComparison.Ordinal))
                 {
                     tokens[3] += " " + tokens[4];
                     tokens.RemoveAt(4);
                 }
                 if (tokens.Count < 6 || !GroupListContains(tokens[3], group.Name)) continue;
-                string eventType = tokens[0];
                 string teacher = string.Join(" ", tokens.Skip(4).Take(3)).Trim().TrimEnd(',');
-                if (teacher.Length == 0) continue;
-                string key = shortName.ToUpperInvariant() + "|" + eventType.ToUpperInvariant();
-                if (!map.TryGetValue(key, out var teachers)) map[key] = teachers = new();
-                teachers.Add(teacher);
+                if (teacher.Length > 0) metadata.Teachers.Add(teacher);
             }
         }
         return map;
