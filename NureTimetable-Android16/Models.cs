@@ -36,6 +36,7 @@ public sealed class TimetableEvent
     public string Type { get; set; } = "";
     public string Room { get; set; } = "";
     public string Description { get; set; } = "";
+    public string EntityKey { get; set; } = "";
     public List<string> Teachers { get; set; } = new();
     public List<string> Groups { get; set; } = new();
 
