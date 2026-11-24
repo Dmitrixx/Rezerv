@@ -3,36 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="NureTimetable.Maui.MainPage"
              Title="Nure Timetable"
-             BackgroundColor="{StaticResource PageBackground}">
-    <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="0">
-        <Grid Grid.Row="0" Padding="18,14" ColumnDefinitions="*,Auto" BackgroundColor="White">
-            <VerticalStackLayout Spacing="2">
-                <Label Text="Nure Timetable" FontSize="23" FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
-                <Label x:Name="DateLabel" FontSize="12" TextColor="{StaticResource TextSecondary}" />
-            </VerticalStackLayout>
-            <Button Grid.Column="1" Text="Обновить" Clicked="OnRefreshClicked"
-                    BackgroundColor="{StaticResource Brand}" TextColor="White"
-                    CornerRadius="12" Padding="14,8" VerticalOptions="Center" />
-        </Grid>
-        <Border Grid.Row="1" Margin="12,10" Padding="12" StrokeThickness="0"
-                BackgroundColor="{StaticResource WarningBackground}" StrokeShape="RoundRectangle 12">
-            <VerticalStackLayout Spacing="4">
-                <Label Text="Важное сообщение CIST" FontAttributes="Bold" TextColor="{StaticResource WarningText}" />
-                <Label Text="В старой версии приложения использовался API CIST. Если мобильный API недоступен, расписание можно открыть на официальном сайте ниже."
-                       FontSize="12" TextColor="{StaticResource WarningText}" />
-            </VerticalStackLayout>
-        </Border>
-        <Grid Grid.Row="2" Padding="12,0,12,8" ColumnDefinitions="*,*,*" ColumnSpacing="8">
-            <Button Text="Назад" Clicked="OnBackClicked" Grid.Column="0" BackgroundColor="White" TextColor="{StaticResource TextPrimary}" CornerRadius="10" />
-            <Button Text="Вперёд" Clicked="OnForwardClicked" Grid.Column="1" BackgroundColor="White" TextColor="{StaticResource TextPrimary}" CornerRadius="10" />
-            <Button Text="На главную" Clicked="OnHomeClicked" Grid.Column="2" BackgroundColor="White" TextColor="{StaticResource TextPrimary}" CornerRadius="10" />
-        </Grid>
-        <Grid Grid.Row="3" RowDefinitions="Auto,*" Margin="12,0,12,12" RowSpacing="6">
-            <Label x:Name="StatusLabel" Grid.Row="0" Text="Открываем расписание ХНУРЭ…" FontSize="12" TextColor="{StaticResource TextSecondary}" />
-            <Border Grid.Row="1" Stroke="#DCE3EC" StrokeThickness="1" BackgroundColor="White" StrokeShape="RoundRectangle 14" Padding="0">
-                <WebView x:Name="CistWebView" Source="https://cist.nure.ua/ias/app/tt/f?p=778:2"
-                         Navigated="OnWebViewNavigated" Navigating="OnWebViewNavigating" />
-            </Border>
-        </Grid>
-    </Grid>
+             BackgroundColor="#F4F6FA">
+    <Grid x:Name="Root" />
 </ContentPage>
