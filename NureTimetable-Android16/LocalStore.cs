@@ -74,7 +74,11 @@ public sealed class LocalStore
         var selected = entities.Where(e => e.IsSelected).ToList();
         var result = new List<TimetableEvent>();
         foreach (var entity in selected)
-            result.AddRange(await LoadScheduleAsync(entity));
+        {
+            var events = await LoadScheduleAsync(entity);
+            foreach (var ev in events) ev.EntityKey = entity.StorageKey;
+            result.AddRange(events);
+        }
         return result.OrderBy(e => e.Start).ToList();
     }
 
