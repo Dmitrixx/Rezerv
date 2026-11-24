@@ -26,9 +26,10 @@ public partial class MainPage : ContentPage
     private VerticalStackLayout? _pageHost;
     private Button? _refreshButton;
     private readonly Color _brand = Color.FromArgb("#2457A6");
-    private readonly Color _ink = Color.FromArgb("#172033");
-    private readonly Color _muted = Color.FromArgb("#64748B");
-    private readonly Color _surface = Colors.White;
+    private Color _ink = Color.FromArgb("#172033");
+    private Color _muted = Color.FromArgb("#64748B");
+    private Color _surface = Colors.White;
+    private Color _background = Color.FromArgb("#F4F6FA");
 
     public MainPage()
     {
@@ -44,6 +45,7 @@ public partial class MainPage : ContentPage
 
     private void BuildShell()
     {
+        Root.BackgroundColor = _background;
         Root.RowDefinitions.Clear();
         Root.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
         Root.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
@@ -57,7 +59,7 @@ public partial class MainPage : ContentPage
         };
         var titleStack = new VerticalStackLayout { Spacing = 1 };
         titleStack.Add(new Label { Text = "NURE TIMETABLE", FontSize = 19, FontAttributes = FontAttributes.Bold, TextColor = _ink });
-        _statusLabel = new Label { Text = "Расписание ХНУРЭ", FontSize = 12, TextColor = _muted };
+        _statusLabel = new Label { Text = Localize("Расписание ХНУРЭ"), FontSize = 12, TextColor = _muted };
         titleStack.Add(_statusLabel);
         header.Add(titleStack, 0, 0);
         _refreshButton = MakeButton("↻", _brand, Colors.White, async () => await RefreshSchedulesAsync(), 42);
@@ -80,7 +82,7 @@ public partial class MainPage : ContentPage
         for (int i = 0; i < tabs.Length; i++)
         {
             string key = keys[i];
-            var b = MakeButton(tabs[i], key == _tab ? _brand : Color.FromArgb("#E9EEF6"),
+            var b = MakeButton(Localize(tabs[i]), key == _tab ? _brand : Color.FromArgb("#E9EEF6"),
                 key == _tab ? Colors.White : _ink, () => SwitchTab(key), 40);
             b.FontSize = 12;
             nav.Add(b, i, 0);
@@ -110,6 +112,7 @@ public partial class MainPage : ContentPage
         _preferences = await _store.LoadPreferencesAsync();
         ApplyTheme();
         _events = await _store.LoadSelectedEventsAsync(_entities);
+        ScheduleReminders();
         foreach (var ev in _events)
         {
             if (string.IsNullOrEmpty(ev.EntityKey))
@@ -122,6 +125,14 @@ public partial class MainPage : ContentPage
 
     private void ApplyTheme()
     {
+        var systemDark = Application.Current?.RequestedTheme == AppTheme.Dark;
+        bool dark = _settings.Theme == "dark" || (_settings.Theme == "system" && systemDark);
+        _ink = Color.FromArgb(dark ? "#F8FAFC" : "#172033");
+        _muted = Color.FromArgb(dark ? "#CBD5E1" : "#64748B");
+        _surface = Color.FromArgb(dark ? "#1E293B" : "#FFFFFF");
+        _background = Color.FromArgb(dark ? "#0F172A" : "#F4F6FA");
+        BackgroundColor = _background;
+        Root.BackgroundColor = _background;
         Application.Current!.UserAppTheme = _settings.Theme switch
         {
             "dark" => AppTheme.Dark,
@@ -242,7 +253,7 @@ public partial class MainPage : ContentPage
         };
         var search = new SearchBar
         {
-            Placeholder = "Поиск по предмету, аудитории или преподавателю",
+            Placeholder = Localize("Поиск по предмету, аудитории или преподавателю"),
             Text = _searchText,
             BackgroundColor = _surface,
             HeightRequest = 44
@@ -272,7 +283,7 @@ public partial class MainPage : ContentPage
         }
 
         var eventsLayout = new VerticalStackLayout { Spacing = 10 };
-        foreach (var day in events.GroupBy(e => e.Start.Date).OrderBy(g => g.Key))
+        foreach (var day in events.GroupBy(e => ToDisplayTime(e.Start).Date).OrderBy(g => g.Key))
         {
             eventsLayout.Add(new Label
             {
@@ -295,8 +306,9 @@ public partial class MainPage : ContentPage
         var result = new List<TimetableEvent>();
         foreach (var ev in _events)
         {
-            if (ev.Start.Date < from || ev.Start.Date > to) continue;
-            if (!_settings.ShowPastLessons && ev.End < DateTime.Now) continue;
+            var displayStart = ToDisplayTime(ev.Start);
+            if (displayStart.Date < from || displayStart.Date > to) continue;
+            if (!_settings.ShowPastLessons && ToDisplayTime(ev.End) < NowInDisplayZone()) continue;
             if (_typeFilter.Length > 0 && !ev.Type.Equals(_typeFilter, StringComparison.CurrentCultureIgnoreCase)) continue;
             if (_searchText.Length > 0)
             {
@@ -355,7 +367,7 @@ public partial class MainPage : ContentPage
     {
         var title = new Label { Text = ev.Lesson, FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = _ink };
         var type = new Label { Text = string.IsNullOrWhiteSpace(ev.Type) ? "Занятие" : ev.Type, FontSize = 12, TextColor = _brand, FontAttributes = FontAttributes.Bold };
-        var time = new Label { Text = $"{ev.TimeText}   {ev.Room}", FontSize = 13, TextColor = _muted };
+        var time = new Label { Text = $"{ToDisplayTime(ev.Start):HH:mm}–{ToDisplayTime(ev.End):HH:mm}   {ev.Room}", FontSize = 13, TextColor = _muted };
         var detail = new Label
         {
             Text = ev.Teachers.Count > 0 ? string.Join(", ", ev.Teachers) :
@@ -405,16 +417,16 @@ public partial class MainPage : ContentPage
 
     private string GetCountdownText()
     {
-        var now = DateTime.Now;
-        var current = _events.FirstOrDefault(e => e.Start <= now && e.End > now);
+        var now = NowInDisplayZone();
+        var current = _events.FirstOrDefault(e => ToDisplayTime(e.Start) <= now && ToDisplayTime(e.End) > now);
         if (current != null)
         {
             var left = current.End - now;
             return $"Сейчас идёт: {current.Lesson} · до конца {FormatRemaining(left)}";
         }
-        var next = _events.Where(e => e.Start > now).OrderBy(e => e.Start).FirstOrDefault();
+        var next = _events.Where(e => ToDisplayTime(e.Start) > now).OrderBy(e => e.Start).FirstOrDefault();
         if (next == null) return "Ближайших занятий в загруженном расписании нет";
-        return $"До следующей пары «{next.Lesson}» — {FormatRemaining(next.Start - now)}";
+        return $"До следующей пары «{next.Lesson}» — {FormatRemaining(ToDisplayTime(next.Start) - now)}";
     }
 
     private static string FormatRemaining(TimeSpan value)
@@ -428,7 +440,7 @@ public partial class MainPage : ContentPage
     private async Task BuildEntitiesViewAsync()
     {
         if (_pageHost == null) return;
-        _pageHost.Add(new Label { Text = "Мои расписания", FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
+        _pageHost.Add(new Label { Text = Localize("Мои расписания"), FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
         _pageHost.Add(new Label { Text = "Отметь расписания, которые нужно показывать одновременно. Сохранённые данные доступны без интернета.", FontSize = 13, TextColor = _muted });
         _pageHost.Add(MakeButton("+ Добавить группу / преподавателя / аудиторию", _brand, Colors.White, AddEntityAsync, 46));
 
@@ -482,7 +494,7 @@ public partial class MainPage : ContentPage
     private async Task BuildLessonsViewAsync()
     {
         if (_pageHost == null) return;
-        _pageHost.Add(new Label { Text = "Занятия и статистика", FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
+        _pageHost.Add(new Label { Text = Localize("Занятия и статистика"), FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
         if (_events.Count == 0)
         {
             _pageHost.Add(EmptyCard("Нет загруженных занятий", "Сначала загрузи хотя бы одно расписание."));
@@ -535,7 +547,7 @@ public partial class MainPage : ContentPage
     private void BuildSettingsView()
     {
         if (_pageHost == null) return;
-        _pageHost.Add(new Label { Text = "Настройки", FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
+        _pageHost.Add(new Label { Text = Localize("Настройки"), FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
         AddSettingsRow("Тема оформления", _settings.Theme switch { "dark" => "Тёмная", "light" => "Светлая", _ => "Как в системе" },
             async () =>
             {
@@ -543,14 +555,14 @@ public partial class MainPage : ContentPage
                 _settings.Theme = answer switch { "Тёмная" => "dark", "Светлая" => "light", _ => "system" };
                 ApplyTheme();
                 await SaveSettingsAsync();
-                await RefreshViewAsync();
+                BuildShell();
             });
         AddSettingsRow("Язык", _settings.Language.ToUpperInvariant(), async () =>
         {
             var answer = await DisplayActionSheet("Язык интерфейса", "Отмена", null, "Русский", "Українська", "English");
             _settings.Language = answer switch { "Українська" => "uk", "English" => "en", _ => "ru" };
             await SaveSettingsAsync();
-            await RefreshViewAsync();
+            BuildShell();
         });
         var auto = new Switch { IsToggled = _settings.AutoUpdate };
         auto.Toggled += async (_, e) => { _settings.AutoUpdate = e.Value; await SaveSettingsAsync(); };
@@ -563,11 +575,27 @@ public partial class MainPage : ContentPage
         AddSettingsRow("Часовой пояс", _settings.TimeZoneId, async () =>
         {
             var answer = await DisplayActionSheet("Часовой пояс", "Отмена", null, "Europe/Kyiv", "Europe/Warsaw", "Europe/Berlin", "UTC", "Системный");
-            _settings.TimeZoneId = answer == "Системный" || string.IsNullOrWhiteSpace(answer) ? TimeZoneInfo.Local.Id : answer;
+            _settings.TimeZoneId = answer == "Системный" || string.IsNullOrWhiteSpace(answer) ? "System" : answer;
             await SaveSettingsAsync();
+            await RefreshViewAsync();
         });
         _pageHost.Add(MakeButton("Войти в дистанционное обучение ХНУРЭ", Color.FromArgb("#E9EEF6"), _brand,
             async () => await Navigation.PushAsync(new MoodleIntegrationPage(_store)), 46));
+        AddSettingsRow("Напоминание о паре", ReminderLabel(), async () =>
+        {
+            var answer = await DisplayActionSheet("Напоминание о паре", "Отмена", null,
+                "Выключено", "В начале пары", "За 10 минут", "За 30 минут");
+            _settings.ReminderMinutes = answer switch
+            {
+                "В начале пары" => 0,
+                "За 10 минут" => 10,
+                "За 30 минут" => 30,
+                _ => -1
+            };
+            await SaveSettingsAsync();
+            ScheduleReminders();
+            await RefreshViewAsync();
+        });
         _pageHost.Add(MakeButton("Открыть официальный сайт расписания", Color.FromArgb("#E9EEF6"), _brand,
             async () => await Browser.Default.OpenAsync("https://cist.nure.ua/ias/app/tt/f?p=778:2"), 46));
         _pageHost.Add(MakeButton("Экспорт расписания в файл календаря", _brand, Colors.White, ExportCalendarAsync, 46));
@@ -766,6 +794,7 @@ public partial class MainPage : ContentPage
             }
         }
         _preferences = await _store.LoadPreferencesAsync();
+        ScheduleReminders();
     }
 
     private async Task SaveEntitiesAsync() => await _store.SaveEntitiesAsync(_entities);
@@ -788,8 +817,8 @@ public partial class MainPage : ContentPage
             sb.AppendLine("BEGIN:VEVENT");
             sb.AppendLine("UID:" + Guid.NewGuid().ToString("N") + "@nuretimetable");
             sb.AppendLine("DTSTAMP:" + DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'"));
-            sb.AppendLine("DTSTART:" + ev.Start.ToUniversalTime().ToString("yyyyMMdd'T'HHmmss'Z'"));
-            sb.AppendLine("DTEND:" + ev.End.ToUniversalTime().ToString("yyyyMMdd'T'HHmmss'Z'"));
+            sb.AppendLine("DTSTART:" + ToCistUtc(ev.Start).ToString("yyyyMMdd'T'HHmmss'Z'"));
+            sb.AppendLine("DTEND:" + ToCistUtc(ev.End).ToString("yyyyMMdd'T'HHmmss'Z'"));
             sb.AppendLine("SUMMARY:" + EscapeIcs(ev.Lesson + " " + ev.Type));
             sb.AppendLine("LOCATION:" + EscapeIcs(ev.Room));
             string description = string.Join(", ", ev.Teachers);
@@ -801,6 +830,110 @@ public partial class MainPage : ContentPage
         await File.WriteAllTextAsync(path, sb.ToString(), Encoding.UTF8);
         await Share.Default.RequestAsync(new ShareFileRequest("Расписание ХНУРЭ", new ShareFile(path)));
     }
+
+    private string ReminderLabel() => _settings.ReminderMinutes switch
+    {
+        -1 => "Выключено",
+        0 => "В начале пары",
+        10 => "За 10 минут",
+        30 => "За 30 минут",
+        _ => "Выключено"
+    };
+
+    private void ScheduleReminders()
+    {
+#if ANDROID
+        try { AndroidReminderScheduler.Schedule(_events, _settings.ReminderMinutes, _settings.TimeZoneId); }
+        catch { }
+#endif
+    }
+
+    private TimeZoneInfo GetDisplayZone()
+    {
+        if (_settings.TimeZoneId == "System") return TimeZoneInfo.Local;
+        try { return TimeZoneInfo.FindSystemTimeZoneById(_settings.TimeZoneId); }
+        catch
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Kiev"); }
+            catch { return TimeZoneInfo.Local; }
+        }
+    }
+
+    private static TimeZoneInfo GetCistZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Kyiv"); }
+        catch
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Kiev"); }
+            catch { return TimeZoneInfo.Local; }
+        }
+    }
+
+    private DateTime ToDisplayTime(DateTime value)
+    {
+        try
+        {
+            var local = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+            return TimeZoneInfo.ConvertTime(local, GetCistZone(), GetDisplayZone());
+        }
+        catch { return value; }
+    }
+
+    private DateTime NowInDisplayZone() => TimeZoneInfo.ConvertTime(DateTimeOffset.Now, GetDisplayZone()).DateTime;
+
+    private DateTime ToCistUtc(DateTime value)
+    {
+        try
+        {
+            var unspecified = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+            return TimeZoneInfo.ConvertTimeToUtc(unspecified, GetCistZone());
+        }
+        catch { return value.ToUniversalTime(); }
+    }
+
+    private string Localize(string value)
+    {
+        if (_settings.Language == "ru" || string.IsNullOrWhiteSpace(value)) return value;
+        var map = _settings.Language == "uk" ? UkrainianText : EnglishText;
+        if (map.TryGetValue(value, out var translated)) return translated;
+        return value;
+    }
+
+    private static readonly Dictionary<string, string> UkrainianText = new()
+    {
+        ["Расписание"] = "Розклад", ["Мои"] = "Мої", ["Занятия"] = "Заняття", ["Настройки"] = "Налаштування",
+        ["Расписание ХНУРЭ"] = "Розклад ХНУРЕ", ["Мои расписания"] = "Мої розклади",
+        ["Занятия и статистика"] = "Заняття та статистика", ["Добавить"] = "Додати",
+        ["Сегодня"] = "Сьогодні", ["День"] = "День", ["Неделя"] = "Тиждень", ["Месяц"] = "Місяць",
+        ["Фильтр"] = "Фільтр", ["Обновить"] = "Оновити", ["Мои расписания"] = "Мої розклади",
+        ["Поиск по предмету, аудитории или преподавателю"] = "Пошук за предметом, аудиторією або викладачем",
+        ["Пока нет сохранённых расписаний"] = "Поки немає збережених розкладів",
+        ["Список пуст"] = "Список порожній", ["Тема оформления"] = "Тема оформлення",
+        ["Язык"] = "Мова", ["Часовой пояс"] = "Часовий пояс",
+        ["Напоминание о паре"] = "Нагадування про пару",
+        ["Показывать прошедшие занятия"] = "Показувати минулі заняття",
+        ["Экспорт расписания в файл календаря"] = "Експорт розкладу у файл календаря",
+        ["Открыть официальный сайт расписания"] = "Відкрити офіційний сайт розкладу",
+        ["Войти в дистанционное обучение ХНУРЭ"] = "Увійти до дистанційного навчання ХНУРЕ"
+    };
+
+    private static readonly Dictionary<string, string> EnglishText = new()
+    {
+        ["Расписание"] = "Timetable", ["Мои"] = "My", ["Занятия"] = "Lessons", ["Настройки"] = "Settings",
+        ["Расписание ХНУРЭ"] = "NURE timetable", ["Мои расписания"] = "My timetables",
+        ["Занятия и статистика"] = "Lessons and statistics", ["Добавить"] = "Add",
+        ["Сегодня"] = "Today", ["День"] = "Day", ["Неделя"] = "Week", ["Месяц"] = "Month",
+        ["Фильтр"] = "Filter", ["Обновить"] = "Refresh",
+        ["Поиск по предмету, аудитории или преподавателю"] = "Search by subject, room or teacher",
+        ["Пока нет сохранённых расписаний"] = "No saved timetables yet",
+        ["Список пуст"] = "The list is empty", ["Тема оформления"] = "Appearance",
+        ["Язык"] = "Language", ["Часовой пояс"] = "Time zone",
+        ["Напоминание о паре"] = "Lesson reminder",
+        ["Показывать прошедшие занятия"] = "Show past lessons",
+        ["Экспорт расписания в файл календаря"] = "Export timetable to calendar file",
+        ["Открыть официальный сайт расписания"] = "Open official timetable website",
+        ["Войти в дистанционное обучение ХНУРЭ"] = "Open DL NURE"
+    };
 
     private static string EscapeIcs(string value) => (value ?? "")
         .Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,")
