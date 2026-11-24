@@ -20,6 +20,16 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
         SchedulePeriodicSync();
+        RequestNotificationPermission();
+    }
+
+    private void RequestNotificationPermission()
+    {
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu &&
+            CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Permission.Granted)
+        {
+            RequestPermissions(new[] { Android.Manifest.Permission.PostNotifications }, 301);
+        }
     }
 
     private void SchedulePeriodicSync()
