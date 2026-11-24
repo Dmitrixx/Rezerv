@@ -69,6 +69,9 @@ public sealed class UserSettings
     public bool AutoUpdate { get; set; } = true;
     public DateTime LastForegroundSync { get; set; } = DateTime.MinValue;
     public bool ShowPastLessons { get; set; } = true;
+    public string MoodleLogin { get; set; } = "";
+    public string MoodleFullName { get; set; } = "";
+    public int MoodleUserId { get; set; }
 }
 
 public sealed class CachedCatalog
