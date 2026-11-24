@@ -15,7 +15,7 @@
     <AndroidMinSdkVersion>24</AndroidMinSdkVersion>
     <AndroidTargetSdkVersion>36</AndroidTargetSdkVersion>
     <AndroidSupportedAbis>arm64-v8a</AndroidSupportedAbis>
-    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidUseAapt2>true</AndroidUseAapt2>
     <AndroidLinkMode>SdkOnly</AndroidLinkMode>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
