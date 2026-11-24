@@ -309,7 +309,10 @@ public partial class MainPage : ContentPage
             var displayStart = ToDisplayTime(ev.Start);
             if (displayStart.Date < from || displayStart.Date > to) continue;
             if (!_settings.ShowPastLessons && ToDisplayTime(ev.End) < NowInDisplayZone()) continue;
-            if (_typeFilter.Length > 0 && !ev.Type.Equals(_typeFilter, StringComparison.CurrentCultureIgnoreCase)) continue;
+            if (_typeFilter.StartsWith("type:", StringComparison.OrdinalIgnoreCase) &&
+                !ev.Type.Equals(_typeFilter[5..], StringComparison.CurrentCultureIgnoreCase)) continue;
+            if (_typeFilter.StartsWith("teacher:", StringComparison.OrdinalIgnoreCase) &&
+                !ev.Teachers.Contains(_typeFilter[8..], StringComparer.CurrentCultureIgnoreCase)) continue;
             if (_searchText.Length > 0)
             {
                 string combined = $"{ev.Lesson} {ev.Room} {string.Join(" ", ev.Teachers)} {string.Join(" ", ev.Groups)}";
@@ -700,14 +703,21 @@ public partial class MainPage : ContentPage
 
     private async Task ChooseFilterAsync()
     {
-        var types = _events.Select(e => e.Type).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().OrderBy(s => s).ToList();
-        var options = new List<string> { "Все типы" };
-        options.AddRange(types);
+        var options = new List<string> { "Все занятия" };
+        options.AddRange(_events.Select(e => e.Type).Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(s => s)
+            .Select(s => "Тип: " + s));
+        options.AddRange(_events.SelectMany(e => e.Teachers).Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(s => s)
+            .Select(s => "Преподаватель: " + s));
         options.Add("Очистить поиск");
-        var answer = await DisplayActionSheet("Фильтр по типу занятия", "Отмена", null, options.ToArray());
-        if (answer == "Все типы") _typeFilter = "";
+        var answer = await DisplayActionSheet("Фильтр занятий", "Отмена", null, options.ToArray());
+        if (answer == "Все занятия") _typeFilter = "";
         else if (answer == "Очистить поиск") { _typeFilter = ""; _searchText = ""; }
-        else if (!string.IsNullOrEmpty(answer)) _typeFilter = answer;
+        else if (!string.IsNullOrEmpty(answer) && answer.StartsWith("Тип: ", StringComparison.Ordinal))
+            _typeFilter = "type:" + answer[5..];
+        else if (!string.IsNullOrEmpty(answer) && answer.StartsWith("Преподаватель: ", StringComparison.Ordinal))
+            _typeFilter = "teacher:" + answer["Преподаватель: ".Length..];
         await RefreshViewAsync();
     }
 
@@ -905,8 +915,9 @@ public partial class MainPage : ContentPage
         ["Расписание ХНУРЭ"] = "Розклад ХНУРЕ", ["Мои расписания"] = "Мої розклади",
         ["Занятия и статистика"] = "Заняття та статистика", ["Добавить"] = "Додати",
         ["Сегодня"] = "Сьогодні", ["День"] = "День", ["Неделя"] = "Тиждень", ["Месяц"] = "Місяць",
-        ["Фильтр"] = "Фільтр", ["Обновить"] = "Оновити", ["Мои расписания"] = "Мої розклади",
+        ["Фильтр"] = "Фільтр", ["Обновить"] = "Оновити",
         ["Поиск по предмету, аудитории или преподавателю"] = "Пошук за предметом, аудиторією або викладачем",
+        ["Все занятия"] = "Усі заняття", ["Преподаватель: "] = "Викладач: ", ["Фильтр занятий"] = "Фільтр занять",
         ["Пока нет сохранённых расписаний"] = "Поки немає збережених розкладів",
         ["Список пуст"] = "Список порожній", ["Тема оформления"] = "Тема оформлення",
         ["Язык"] = "Мова", ["Часовой пояс"] = "Часовий пояс",
@@ -925,6 +936,7 @@ public partial class MainPage : ContentPage
         ["Сегодня"] = "Today", ["День"] = "Day", ["Неделя"] = "Week", ["Месяц"] = "Month",
         ["Фильтр"] = "Filter", ["Обновить"] = "Refresh",
         ["Поиск по предмету, аудитории или преподавателю"] = "Search by subject, room or teacher",
+        ["Все занятия"] = "All lessons", ["Преподаватель: "] = "Teacher: ", ["Фильтр занятий"] = "Lesson filters",
         ["Пока нет сохранённых расписаний"] = "No saved timetables yet",
         ["Список пуст"] = "The list is empty", ["Тема оформления"] = "Appearance",
         ["Язык"] = "Language", ["Часовой пояс"] = "Time zone",
@@ -959,7 +971,7 @@ public partial class MainPage : ContentPage
     {
         var button = new Button
         {
-            Text = text,
+            Text = Localize(text),
             BackgroundColor = background,
             TextColor = foreground,
             CornerRadius = 10,
