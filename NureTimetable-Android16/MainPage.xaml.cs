@@ -12,6 +12,7 @@ public partial class MainPage : ContentPage
 {
     private readonly LocalStore _store = new();
     private readonly CistService _cist;
+    private readonly MoodleService _moodle = new();
     private List<TimetableEntity> _entities = new();
     private List<TimetableEvent> _events = new();
     private List<LessonPreference> _preferences = new();
@@ -322,6 +323,7 @@ public partial class MainPage : ContentPage
                 p.LessonKey.Equals(ev.LessonKey, StringComparison.OrdinalIgnoreCase));
             if (pref is not null)
             {
+                if (_settings.HideLessonsMissingFromMoodle && pref.HiddenByMoodleSync) continue;
                 if (pref.Hidden || pref.HiddenTypes.Contains(ev.Type)) continue;
                 if (ev.Teachers.Any(t => pref.HiddenTeachers.Contains(t))) continue;
             }
@@ -498,6 +500,23 @@ public partial class MainPage : ContentPage
     {
         if (_pageHost == null) return;
         _pageHost.Add(new Label { Text = Localize("Занятия и статистика"), FontSize = 21, FontAttributes = FontAttributes.Bold, TextColor = _ink });
+        if (_settings.MoodleUserId > 0)
+        {
+            _pageHost.Add(MakeButton("Синхронизировать предметы с DL NURE", Color.FromArgb("#E9EEF6"), _brand, SyncLessonsWithMoodleAsync, 42));
+            var hideMissing = new Switch { IsToggled = _settings.HideLessonsMissingFromMoodle };
+            hideMissing.Toggled += async (_, e) =>
+            {
+                _settings.HideLessonsMissingFromMoodle = e.Value;
+                await SaveSettingsAsync();
+                await RefreshViewAsync();
+            };
+            _pageHost.Add(SettingsSwitchRow("Скрывать предметы, которых нет в DL NURE", hideMissing));
+        }
+        else
+        {
+            _pageHost.Add(MakeButton("Подключить DL NURE для посещаемости", Color.FromArgb("#E9EEF6"), _brand,
+                async () => await Navigation.PushAsync(new MoodleIntegrationPage(_store)), 42));
+        }
         if (_events.Count == 0)
         {
             _pageHost.Add(EmptyCard("Нет загруженных занятий", "Сначала загрузи хотя бы одно расписание."));
@@ -526,6 +545,9 @@ public partial class MainPage : ContentPage
                 info.Add(new Label { Text = "Заметка: " + pref.Notes, FontSize = 12, TextColor = _brand, MaxLines = 2 });
             var buttons = new HorizontalStackLayout { Spacing = 8 };
             buttons.Add(MakeButton("Заметка", Color.FromArgb("#E9EEF6"), _brand, async () => await EditLessonPreferenceAsync(list[0]), 36));
+            if (_settings.MoodleUserId > 0)
+                buttons.Add(MakeButton("Посещаемость DL NURE", Color.FromArgb("#E9EEF6"), _brand,
+                    async () => await OpenAttendanceAsync(list[0]), 36));
             buttons.Add(MakeButton(pref.Hidden ? "Показать" : "Скрыть занятие", pref.Hidden ? Color.FromArgb("#DCFCE7") : Color.FromArgb("#FEE2E2"),
                 pref.Hidden ? Color.FromArgb("#166534") : Color.FromArgb("#B91C1C"), async () =>
                 {
@@ -658,6 +680,22 @@ public partial class MainPage : ContentPage
         body.Add(new Label { Text = "Заметка к занятию", FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = _ink });
         var notes = new Editor { Text = pref.Notes, Placeholder = "Добавить заметку…", AutoSize = EditorAutoSizeOption.TextChanges, HeightRequest = 110, BackgroundColor = _surface, TextColor = _ink };
         body.Add(notes);
+        body.Add(MakeButton(pref.MoodleCourseId.HasValue
+            ? $"ID курса DL NURE: {pref.MoodleCourseId.Value}"
+            : "Указать ID курса DL NURE", Color.FromArgb("#E9EEF6"), _brand, async () =>
+        {
+            string? rawId = await DisplayPromptAsync("ID курса DL NURE",
+                "Можно оставить пустым, чтобы включить автоматический поиск курса.",
+                "Сохранить", "Отмена", initialValue: pref.MoodleCourseId?.ToString(),
+                keyboard: Keyboard.Numeric);
+            if (rawId == null) return;
+            pref.MoodleCourseId = int.TryParse(rawId, out int courseId) && courseId > 0 ? courseId : null;
+            await _store.SavePreferenceAsync(pref);
+            _preferences = await _store.LoadPreferencesAsync();
+            await DisplayAlert("DL NURE", pref.MoodleCourseId.HasValue
+                ? "ID курса сохранён." : "Ручной ID удалён. Будет использован автоматический поиск.", "ОК");
+            await RefreshViewAsync();
+        }, 40));
         var hideLesson = new Switch { IsToggled = pref.Hidden };
         body.Add(SettingsSwitchRow("Скрыть все занятия по этому предмету", hideLesson));
         body.Add(MakeButton("Скрыть этот тип занятия", Color.FromArgb("#FEE2E2"), Color.FromArgb("#B91C1C"), async () =>
@@ -699,6 +737,81 @@ public partial class MainPage : ContentPage
     private async Task EditLessonPreferenceAsync(TimetableEvent ev)
     {
         await OpenEventDetailsAsync(ev);
+    }
+
+    private async Task OpenAttendanceAsync(TimetableEvent ev)
+    {
+        if (_settings.MoodleUserId <= 0)
+        {
+            await Navigation.PushAsync(new MoodleIntegrationPage(_store));
+            return;
+        }
+
+        var preference = await _store.GetPreferenceAsync(ev.EntityKey, ev.LessonKey);
+        int? courseId = preference.MoodleCourseId;
+        if (!courseId.HasValue)
+        {
+            var matchedCourse = await _moodle.FindCourseForLessonAsync(
+                _settings.MoodleUserId, ev.Lesson, string.IsNullOrWhiteSpace(ev.LessonLongName) ? ev.Lesson : ev.LessonLongName);
+            courseId = matchedCourse?.Id;
+            if (courseId.HasValue)
+            {
+                preference.MoodleCourseId = courseId.Value;
+                await _store.SavePreferenceAsync(preference);
+            }
+        }
+
+        if (!courseId.HasValue)
+        {
+            await DisplayAlert("DL NURE", "Не удалось автоматически найти курс. Укажи ID курса в карточке занятия.", "ОК");
+            return;
+        }
+
+        string? attendanceUrl = await _moodle.GetAttendanceUrlAsync(courseId.Value);
+        if (string.IsNullOrWhiteSpace(attendanceUrl))
+        {
+            await DisplayAlert("DL NURE", "В найденном курсе нет модуля посещаемости.", "ОК");
+            return;
+        }
+        await Browser.Default.OpenAsync(attendanceUrl);
+    }
+
+    private async Task SyncLessonsWithMoodleAsync()
+    {
+        if (_settings.MoodleUserId <= 0)
+        {
+            await Navigation.PushAsync(new MoodleIntegrationPage(_store));
+            return;
+        }
+
+        var selectedEvents = _events.Where(ev => _entities.Any(entity =>
+            entity.IsSelected && entity.StorageKey == ev.EntityKey)).ToList();
+        var subjects = selectedEvents.GroupBy(ev => new { ev.EntityKey, ev.LessonKey }).ToList();
+        int matched = 0;
+        foreach (var subject in subjects)
+        {
+            var first = subject.First();
+            var course = await _moodle.FindCourseForLessonAsync(
+                _settings.MoodleUserId, first.Lesson,
+                string.IsNullOrWhiteSpace(first.LessonLongName) ? first.Lesson : first.LessonLongName);
+            var preference = await _store.GetPreferenceAsync(first.EntityKey, first.LessonKey);
+            preference.HiddenByMoodleSync = course == null;
+            if (course != null)
+            {
+                matched++;
+                preference.MoodleCourseId ??= course.Id;
+            }
+            await _store.SavePreferenceAsync(preference);
+        }
+
+        _settings.HideLessonsMissingFromMoodle = true;
+        await SaveSettingsAsync();
+        _preferences = await _store.LoadPreferencesAsync();
+        await RefreshViewAsync();
+        await DisplayAlert("DL NURE",
+            $"Проверено предметов: {subjects.Count}. Найдено в DL NURE: {matched}. " +
+            $"Не найденные предметы скрываются, пока включён соответствующий переключатель.",
+            "ОК");
     }
 
     private async Task ChooseFilterAsync()

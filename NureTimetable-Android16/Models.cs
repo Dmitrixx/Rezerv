@@ -56,6 +56,8 @@ public sealed class LessonPreference
     public string LessonKey { get; set; } = "";
     public string Notes { get; set; } = "";
     public bool Hidden { get; set; }
+    public bool HiddenByMoodleSync { get; set; }
+    public int? MoodleCourseId { get; set; }
     public HashSet<string> HiddenTypes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> HiddenTeachers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -70,6 +72,7 @@ public sealed class UserSettings
     public DateTime LastForegroundSync { get; set; } = DateTime.MinValue;
     public bool ShowPastLessons { get; set; } = true;
     public int ReminderMinutes { get; set; } = -1;
+    public bool HideLessonsMissingFromMoodle { get; set; }
     public string MoodleLogin { get; set; } = "";
     public string MoodleFullName { get; set; } = "";
     public int MoodleUserId { get; set; }

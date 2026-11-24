@@ -77,10 +77,64 @@ public sealed class MoodleService
                 Id = Int(item, "id"),
                 ShortName = Str(item, "shortname"),
                 FullName = Str(item, "fullname"),
-                Summary = Str(item, "summary")
+                Summary = Str(item, "summary"),
+                StartDateUtc = UtcDate(item, "startdate"),
+                EndDateUtc = UtcDate(item, "enddate")
             });
         }
         return courses.Where(c => c.Id > 0).ToList();
+    }
+
+    public async Task<MoodleCourse?> FindCourseForLessonAsync(
+        int userId, string lessonShortName, string lessonFullName, CancellationToken ct = default)
+    {
+        var courses = await GetCoursesAsync(userId, ct);
+        string fullName = Simplify(lessonFullName);
+        var matches = courses.Where(course =>
+            (!string.IsNullOrWhiteSpace(lessonShortName) &&
+                (course.ShortName.Contains($":{lessonShortName}:", StringComparison.OrdinalIgnoreCase) ||
+                 course.ShortName.Equals(lessonShortName, StringComparison.OrdinalIgnoreCase))) ||
+            (fullName.Length > 0 && fullName.StartsWith(Simplify(course.FullName), StringComparison.Ordinal)))
+            .ToList();
+
+        if (matches.Count == 0 && !string.IsNullOrWhiteSpace(lessonShortName))
+        {
+            string shortName = Simplify(lessonShortName);
+            matches = courses.Where(course =>
+                Simplify(course.FullName).Contains(shortName, StringComparison.Ordinal))
+                .ToList();
+        }
+
+        if (matches.Count > 1)
+        {
+            var now = DateTime.UtcNow;
+            var ongoing = matches.Where(course =>
+                (course.StartDateUtc == null || course.StartDateUtc <= now) &&
+                (course.EndDateUtc == null || course.EndDateUtc > now)).ToList();
+            if (ongoing.Count > 0) matches = ongoing;
+        }
+
+        return matches.FirstOrDefault();
+    }
+
+    public async Task<string?> GetAttendanceUrlAsync(int courseId, CancellationToken ct = default)
+    {
+        var modules = await GetCourseContentsAsync(courseId, ct: ct);
+        return modules.FirstOrDefault(module =>
+            module.ModName.Equals("attendance", StringComparison.OrdinalIgnoreCase))?.Url;
+    }
+
+    private static string Simplify(string value) =>
+        new((value ?? "").Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+
+    private static DateTime? UtcDate(JsonElement item, string propertyName)
+    {
+        if (item.TryGetProperty(propertyName, out var value) &&
+            value.TryGetInt64(out long seconds) && seconds > 0)
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+        }
+        return null;
     }
 
     public async Task<List<MoodleModule>> GetCourseContentsAsync(int courseId, CancellationToken ct = default)
@@ -191,6 +245,8 @@ public sealed class MoodleCourse
     public string ShortName { get; set; } = "";
     public string FullName { get; set; } = "";
     public string Summary { get; set; } = "";
+    public DateTime? StartDateUtc { get; set; }
+    public DateTime? EndDateUtc { get; set; }
 }
 
 public sealed class MoodleModule
