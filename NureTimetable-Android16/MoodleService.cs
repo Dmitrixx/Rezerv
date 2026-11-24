@@ -32,12 +32,16 @@ public sealed class MoodleService
             throw new InvalidOperationException(WebUtility.HtmlDecode(message));
         }
         string token = tokenValue.GetString() ?? throw new InvalidOperationException("Пустой токен Moodle");
-        var site = await GetSiteInfoAsync(token, ct);
+        using var siteDoc = await GetSiteInfoAsync(token, ct);
+        var site = siteDoc.RootElement;
+        int resolvedUserId = 0;
+        if (site.TryGetProperty("userid", out var idValue))
+            idValue.TryGetInt32(out resolvedUserId);
         var account = new MoodleAccount
         {
             Login = login,
             FullName = site.TryGetProperty("fullname", out var full) ? full.GetString() ?? login : login,
-            UserId = site.TryGetProperty("userid", out var id) && id.TryGetInt32(out int userId) ? userId : 0
+            UserId = resolvedUserId
         };
 
         await SecureStorage.SetAsync(TokenKey, token);
